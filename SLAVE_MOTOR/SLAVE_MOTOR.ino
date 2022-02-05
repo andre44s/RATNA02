@@ -40,7 +40,6 @@ unsigned int prevTime, nowTime;
 const uint8_t interval = 100;
 
 //PID variable
-
 double PIDValue[amountOfMotor], PWMValue[amountOfMotor],
        Error[amountOfMotor], PrevError[amountOfMotor],
        P[amountOfMotor], I[amountOfMotor], D[amountOfMotor];
@@ -74,6 +73,9 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(encBPin[1]), func2, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encBPin[2]), func3, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encBPin[3]), func4, CHANGE);
+        
+  pwmtimer.setPrescaleFactor(1);
+  pwmtimer.setOverflow(freqCPU);
 
   prevTime = millis();
 }
