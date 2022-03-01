@@ -6,18 +6,14 @@
 #define freqCPU (72000000/freqPWM)
 #define maxOriginalPWM 65535
 #define amountOfMotor 4
-#define MAPfreq1 labs((pwmValue[0]/maxOriginalPWM) * (freqCPU))
-#define MAPfreq2 labs((pwmValue[1]/maxOriginalPWM) * (freqCPU))
-#define MAPfreq3 labs((pwmValue[2]/maxOriginalPWM) * (freqCPU))
-#define MAPfreq4 labs((pwmValue[3]/maxOriginalPWM) * (freqCPU))
-HardwareTimer pwmtimer(amountOfMotor);
+#define MAPfreq labs((CarrierPWM/maxOriginalPWM) * (freqCPU))
+HardwareTimer pwmtimer(2);
 
 //Parsing data variable
 String dataIn;
 String arrayData[8];
 boolean parsing = false,
-        receive = false,
-        readMasterState = true;
+        receive = false;
 
 //Motor variable
 const uint8_t pwmPin[amountOfMotor]  = {PA0, PA1, PA2, PA3};
@@ -40,14 +36,15 @@ unsigned int prevTime, nowTime;
 const uint8_t interval = 100;
 
 //PID variable
-double PIDValue[amountOfMotor], PWMValue[amountOfMotor],
+double PIDValue[amountOfMotor], PWMValue[amountOfMotor], CarrierPWM,
        Error[amountOfMotor], PrevError[amountOfMotor],
        P[amountOfMotor], I[amountOfMotor], D[amountOfMotor];
 double Kp[amountOfMotor] = {0, 0, 0, 0};
 double Ki[amountOfMotor] = {0, 0, 0, 0};
 double Kd[amountOfMotor] = {0, 0, 0, 0};
+int final_speed[amountOfMotor];
 
-uint8_t i;
+unsigned int i;
 
 void setup() {
   Serial.begin(115200);
@@ -73,7 +70,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(encBPin[1]), func2, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encBPin[2]), func3, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encBPin[3]), func4, CHANGE);
-        
+
   pwmtimer.setPrescaleFactor(1);
   pwmtimer.setOverflow(freqCPU);
 
@@ -82,7 +79,6 @@ void setup() {
 
 void loop() {
   readSerial();
-  readMaster();
 
   nowTime = millis();
   if (nowTime - prevTime > interval) {
@@ -97,39 +93,12 @@ void loop() {
   }
 }
 
-void readMaster() {
-  while (Serial1.available() > 0 && readMasterState == true) {
-    char inChar = (char)Serial1.read();
-    if (inChar == '*') {
-      dataIn = "";
-      receive = true;
-    }
-
-    if (receive) {
-      dataIn += inChar;
-      if (inChar == '#') {
-        parsing = true;
-      }
-    }
-
-    if (parsing) {
-      parsingData();
-      parsing = false;
-      receive = false;
-    }
-  }
-}
-
 void readSerial() {
   while (Serial.available() > 0) {
     char inChar = (char)Serial.read();
     if (inChar == '*') {
       dataIn = "";
       receive = true;
-    }
-
-    else if (inChar == 'E') {
-      readMasterState = !readMasterState;
     }
 
     if (receive) {
@@ -151,7 +120,7 @@ void parsingData() {
   short int j = 0;
   arrayData[j] = "";
 
-  for (int i = 1; i < dataIn.length(); i++) {
+  for (i = 1; i < dataIn.length(); i++) {
     if ((dataIn[i] == '#') || (dataIn[i] == ',')) {
       j++;
       arrayData[j] = "";
@@ -213,7 +182,9 @@ void PIDMotor() {
       PWMValue[i] = 0;
     }
 
-    pwmWrite(pwmPin[i], PWMValue[i]);
+    CarrierPWM = PWMValue[0];    
+
+    pwmWrite(pwmPin[i], MAPfreq);
 
     if (setRPM[i] > 0) {
       digitalWrite(enaAPin[i], HIGH);
