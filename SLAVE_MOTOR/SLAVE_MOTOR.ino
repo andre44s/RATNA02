@@ -161,7 +161,7 @@ void PIDMotor() {
   for (i = 0; i < amountOfMotor; i++) {
     Error[i] = abs(setRPM[i]) - nowRPM[i];
     P[i] = Error[i];
-    I[i] = I[i] + Error[i];
+    I[i] = PrevError[i] + Error[i];
     D[i] = Error[i] - PrevError[i];
 
     if (I[i] >= 65535) {
