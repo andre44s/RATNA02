@@ -44,7 +44,7 @@ double Ki[amountOfMotor] = {0, 0, 0, 0};
 double Kd[amountOfMotor] = {0, 0, 0, 0};
 int final_speed[amountOfMotor];
 
-unsigned int i;
+unsigned int i, maxRPM=100;
 
 void setup() {
   Serial.begin(115200);
@@ -79,6 +79,51 @@ void setup() {
 
 void loop() {
   readSerial();
+
+  switch (master_command) {
+    case 0:
+      setRPM[0] = maxRPM
+      setRPM[1] = 0
+      setRPM[2] = 0
+      setRPM[3] = -maxRPM
+      break;
+    case 1:
+      setRPM[0] = 0
+      setRPM[1] = maxRPM
+      setRPM[2] = -maxRPM
+      setRPM[3] = 0
+      break;
+    case 2:
+      setRPM[0] = 0
+      setRPM[1] = 0
+      setRPM[2] = 0
+      setRPM[3] = 0
+      break;
+    case 3:
+      setRPM[0] = maxRPM
+      setRPM[1] = -maxRPM
+      setRPM[2] = maxRPM
+      setRPM[3] = -maxRPM
+      break;
+    case 4:
+      setRPM[0] = -maxRPM
+      setRPM[1] = maxRPM
+      setRPM[2] = -maxRPM
+      setRPM[3] = maxRPM
+      break;
+    case 5:
+      setRPM[0] = maxRPM
+      setRPM[1] = maxRPM
+      setRPM[2] = -maxRPM
+      setRPM[3] = -maxRPM
+      break;
+    default:
+      setRPM[0] = 0
+      setRPM[1] = 0
+      setRPM[2] = 0
+      setRPM[3] = 0
+      break;
+  }
 
   nowTime = millis();
   if (nowTime - prevTime > interval) {
@@ -130,15 +175,7 @@ void parsingData() {
     }
   }
 
-  setRPM[0] = arrayData[0].toFloat();
-  setRPM[1] = arrayData[1].toFloat();
-  setRPM[2] = arrayData[2].toFloat();
-  setRPM[3] = arrayData[3].toFloat();
-
-  relayState[0]  = arrayData[4].toFloat();
-  relayState[1]  = arrayData[5].toFloat();
-  relayState[2]  = arrayData[6].toFloat();
-  relayState[3]  = arrayData[7].toFloat();
+  master_command = arrayData[0].toFloat();
 }
 
 void func1() {
@@ -182,7 +219,7 @@ void PIDMotor() {
       PWMValue[i] = 0;
     }
 
-    CarrierPWM = PWMValue[0];    
+    CarrierPWM = PWMValue[0];
 
     pwmWrite(pwmPin[i], MAPfreq);
 
