@@ -34,7 +34,7 @@ const uint8_t interval = 100;
 double PIDValue[amountOfMotor], PWMValue[amountOfMotor], CarrierPWM,
        Error[amountOfMotor], PrevError[amountOfMotor],
        P[amountOfMotor], I[amountOfMotor], D[amountOfMotor];
-double Kp[amountOfMotor] = {100, 100, 100, 100};
+double Kp[amountOfMotor] = {50, 50, 50, 50};
 double Ki[amountOfMotor] = {0, 0, 0, 0};
 double Kd[amountOfMotor] = {0, 0, 0, 0};
 int final_speed[amountOfMotor];
@@ -85,10 +85,10 @@ void loop() {
       setRPM[3] = 0;
       break;
     case 1:
-      setRPM[0] = 0;
-      setRPM[1] = maxRPM;
-      setRPM[2] = -maxRPM;
-      setRPM[3] = 0;
+      setRPM[0] = maxRPM;
+      setRPM[1] = 0;
+      setRPM[2] = 0;
+      setRPM[3] = -maxRPM;
       break;
     case 2:
       setRPM[0] = 0;
