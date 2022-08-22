@@ -48,8 +48,11 @@ VOC/
 *.onnx
 *.mlmodel
 *.torchscript
+*.h5
+*.pkl
 darknet53.conv.74
 yolov3-tiny.conv.15
+.\AI SYSTEM\weights
 
 # GitHub Python GitIgnore ----------------------------------------------------------------------------------------------
 # Byte-compiled / optimized / DLL files
@@ -242,3 +245,5 @@ com_crashlytics_export_strings.xml
 crashlytics.properties
 crashlytics-build.properties
 fabric.properties
+
+testfiles

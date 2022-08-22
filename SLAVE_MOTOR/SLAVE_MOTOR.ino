@@ -16,20 +16,15 @@ boolean parsing = false,
         receive = false;
 
 //Motor variable
-const uint8_t pwmPin[amountOfMotor]  = {PA0, PA1, PA2, PA3};
-const uint8_t enaAPin[amountOfMotor] = {PA4, PA6, PB0, PB10};
-const uint8_t enaBPin[amountOfMotor] = {PA5, PA7, PB1, PB11};
+const uint8_t pwmPin[amountOfMotor]  = {PA3, PA2, PA0, PA1};
+const uint8_t enaAPin[amountOfMotor] = {PB10, PB0, PA4, PA6};
+const uint8_t enaBPin[amountOfMotor] = {PB11, PB1, PA5, PA7};
 const uint8_t encAPin[amountOfMotor] = {PB8, PB7, PB14, PB12};
 const uint8_t encBPin[amountOfMotor] = {PB9, PB6, PB15, PB13};
 const short int encCount[amountOfMotor] = {1988, 1988, 1988, 1988};
-float revolutions[amountOfMotor],
-      setRPM[amountOfMotor],
-      nowRPM[amountOfMotor];
-
-//Relay variable
-const uint8_t amountOfRelay = 4;
-const uint8_t relayPin[amountOfRelay] = {PA15, PB3, PB4, PB5};
-uint8_t relayState[amountOfRelay];
+int revolutions[amountOfMotor],
+    setRPM[amountOfMotor],
+    nowRPM[amountOfMotor];
 
 //Timing Variable
 unsigned int prevTime, nowTime;
@@ -39,16 +34,15 @@ const uint8_t interval = 100;
 double PIDValue[amountOfMotor], PWMValue[amountOfMotor], CarrierPWM,
        Error[amountOfMotor], PrevError[amountOfMotor],
        P[amountOfMotor], I[amountOfMotor], D[amountOfMotor];
-double Kp[amountOfMotor] = {0, 0, 0, 0};
+double Kp[amountOfMotor] = {100, 100, 100, 100};
 double Ki[amountOfMotor] = {0, 0, 0, 0};
 double Kd[amountOfMotor] = {0, 0, 0, 0};
 int final_speed[amountOfMotor];
 
-unsigned int i, maxRPM=100;
+unsigned int i, maxRPM = 50, master_command = 0;
 
 void setup() {
   Serial.begin(115200);
-  Serial1.begin(115200);
 
   for (i = 0; i < amountOfMotor; i++) {
     pinMode(pwmPin[i], PWM);
@@ -56,10 +50,6 @@ void setup() {
     pinMode(enaBPin[i], OUTPUT);
     pinMode(encAPin[i], INPUT);
     pinMode(encBPin[i], INPUT);
-  }
-
-  for (i = 0; i < amountOfRelay; i++) {
-    pinMode(relayPin[i], OUTPUT);
   }
 
   attachInterrupt(digitalPinToInterrupt(encAPin[0]), func1, CHANGE);
@@ -80,48 +70,55 @@ void setup() {
 void loop() {
   readSerial();
 
+  //  0 = 'Diagonal Kanan'
+  //  1 = 'Diagonal Kiri'
+  //  2 = 'Diam'
+  //  3 = 'Kanan'
+  //  4 = 'Kiri'
+  //  5 = 'Maju'
+
   switch (master_command) {
     case 0:
-      setRPM[0] = maxRPM
-      setRPM[1] = 0
-      setRPM[2] = 0
-      setRPM[3] = -maxRPM
+      setRPM[0] = 0;
+      setRPM[1] = -maxRPM;
+      setRPM[2] = maxRPM;
+      setRPM[3] = 0;
       break;
     case 1:
-      setRPM[0] = 0
-      setRPM[1] = maxRPM
-      setRPM[2] = -maxRPM
-      setRPM[3] = 0
+      setRPM[0] = 0;
+      setRPM[1] = maxRPM;
+      setRPM[2] = -maxRPM;
+      setRPM[3] = 0;
       break;
     case 2:
-      setRPM[0] = 0
-      setRPM[1] = 0
-      setRPM[2] = 0
-      setRPM[3] = 0
+      setRPM[0] = 0;
+      setRPM[1] = 0;
+      setRPM[2] = 0;
+      setRPM[3] = 0;
       break;
     case 3:
-      setRPM[0] = maxRPM
-      setRPM[1] = -maxRPM
-      setRPM[2] = maxRPM
-      setRPM[3] = -maxRPM
+      setRPM[0] = maxRPM;
+      setRPM[1] = -maxRPM;
+      setRPM[2] = maxRPM;
+      setRPM[3] = -maxRPM;
       break;
     case 4:
-      setRPM[0] = -maxRPM
-      setRPM[1] = maxRPM
-      setRPM[2] = -maxRPM
-      setRPM[3] = maxRPM
+      setRPM[0] = -maxRPM;
+      setRPM[1] = maxRPM;
+      setRPM[2] = -maxRPM;
+      setRPM[3] = maxRPM;
       break;
     case 5:
-      setRPM[0] = maxRPM
-      setRPM[1] = maxRPM
-      setRPM[2] = -maxRPM
-      setRPM[3] = -maxRPM
+      setRPM[0] = maxRPM;
+      setRPM[1] = maxRPM;
+      setRPM[2] = -maxRPM;
+      setRPM[3] = -maxRPM;
       break;
     default:
-      setRPM[0] = 0
-      setRPM[1] = 0
-      setRPM[2] = 0
-      setRPM[3] = 0
+      setRPM[0] = 0;
+      setRPM[1] = 0;
+      setRPM[2] = 0;
+      setRPM[3] = 0;
       break;
   }
 
@@ -136,10 +133,16 @@ void loop() {
 
     PIDMotor();
   }
+
+  for (i = 0; i < amountOfMotor; i++) {
+    Serial.print(nowRPM[i]);
+    Serial.print("\t");
+  }
+  Serial.println();
 }
 
 void readSerial() {
-  while (Serial.available() > 0) {
+  if (Serial.available() > 0) {
     char inChar = (char)Serial.read();
     if (inChar == '*') {
       dataIn = "";
@@ -158,6 +161,10 @@ void readSerial() {
       parsing = false;
       receive = false;
     }
+  }
+  else if (!Serial) {
+    master_command = 2;
+    Serial.println("Serial Disconnected");
   }
 }
 
@@ -219,9 +226,11 @@ void PIDMotor() {
       PWMValue[i] = 0;
     }
 
-    CarrierPWM = PWMValue[0];
+    CarrierPWM = PWMValue[i];
 
     pwmWrite(pwmPin[i], MAPfreq);
+    Serial.print(MAPfreq);
+    Serial.print("\t");
 
     if (setRPM[i] > 0) {
       digitalWrite(enaAPin[i], HIGH);
@@ -238,4 +247,5 @@ void PIDMotor() {
 
     revolutions[i] = 0;
   }
+  Serial.println();
 }

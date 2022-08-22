@@ -15,23 +15,34 @@ from utils.plots import plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 import numpy as np
 from pickle import load
-from tensorflow.keras.models import load_model
 import serial
+from tensorflow.keras.models import model_from_json
 
 try:
-    slave_sensor = serial.Serial('COM3')
+    slave_sensor = serial.Serial('COM11')
     slave_sensor.flushInput()
+    sensor_connection = True
 except:
     print('Slave Sensor not connected')
+    sensor_connection = False
 
 try:
-    slave_motor = serial.Serial('COM4')
+    slave_motor = serial.Serial('COM10')
     slave_motor.flushInput()
+    motor_connection = True
 except:
     print('Slave Motor not connected')
+    motor_connection = False
 
-model = load_model("weights/ratna_model.h5")
-scaler = load('weights/scaler.pkl')
+# load model
+with open('weights/model.json', 'r') as json_file:
+    model_json = json_file.read()
+tf_model = model_from_json(model_json)
+tf_model.load_weights("weights/weights.h5")
+
+#load scaler
+with open('weights/scaler.pkl', 'rb') as scaler_file:
+    scaler = load(scaler_file)
 
 output_label = ['Diagonal Kanan',
                 'Diagonal Kiri',
@@ -39,6 +50,11 @@ output_label = ['Diagonal Kanan',
                 'Kanan',
                 'Kiri',
                 'Maju']
+
+font_thickness = 1
+font_spacing = 25
+font_scale = 1
+font_color = (0,0,0)
 
 def detect(save_img=False):
     source, weights, view_img, save_txt, imgsz = opt.source, opt.weights, opt.view_img, opt.save_txt, opt.img_size
@@ -86,15 +102,16 @@ def detect(save_img=False):
         model(torch.zeros(1, 3, imgsz, imgsz).to(device).type_as(next(model.parameters())))  # run once
     t0 = time.time()
     for path, img, im0s, vid_cap in dataset:
-        slave_sensor.write(b'*')
-        try:
+        if sensor_connection == True:
+            slave_sensor.write(b'*')
             serial_bytes = slave_sensor.readline()
             sensor_raw = str(serial_bytes.decode("utf-8")).split(",")
             sensor_data = list(map(int, sensor_raw[:-1]))
-            print(sensor_data)
-        except:
-            continue
-
+            #print(sensor_data)
+        else:
+            print('Slave Sensor Serial Error')
+            sensor_data = [30, 30, 30]
+        
         img = torch.from_numpy(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
@@ -135,6 +152,13 @@ def detect(save_img=False):
 
                 w = im0.shape[1]
                 h = im0.shape[0]
+                left_filter = round(w/4)
+                right_filter = round((w/4)*3)
+                left_ignore = w/8
+                right_ignore = (w/8)*7
+                robot_center = round(w/2)
+                line_color = (0, 255, 21)
+                hard_object = False
 
                 # Write results
                 object_positions = []
@@ -146,53 +170,65 @@ def detect(save_img=False):
                             f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
                     if save_img or view_img:  # Add bbox to image
-                        object_position = [int((xyxy[0] + xyxy[2])/2), int((xyxy[1] + xyxy[3])/2)]
-                        object_positions.append(object_position)
+                        object_position = [int((xyxy[0] + xyxy[2])/2), int((xyxy[1] + xyxy[3])/2), int((xyxy[3]))]
+                        
+                        if object_position[0] >= left_ignore and object_position[0] <= right_ignore: #only count object that are in 75% of the camera
+                            object_positions.append(object_position)
+                            
+                            if object_position[0] >= left_filter and object_position[0] <= right_filter and object_position[2] >= (h/3) and hard_object == False: #detecting if there is object near the robot
+                                line_color = (0, 0, 255)
+                                hard_object = True
+                        
                         label = f'{(xyxy[0] + xyxy[2])/2} {(xyxy[1] + xyxy[3])/2}'
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)], line_thickness=3)
 
-                object_positions.append([0,0])
-                object_positions.append([w,0])
+                object_positions.append([left_ignore,0])
+                object_positions.append([right_ignore,0])
                 object_positions.sort()
-                hard_object = False
 
-                print(object_positions)
-
-                first_third = round((w/3)*1)
-                second_third = round((w/3)*2)
-                robot_center = round(w/2)
-
-                for detected in object_positions:
-                    if detected[0] >= first_third and detected[0] <= second_third:
-                        line_color = (0, 0, 255)
-                        hard_object = True
-                        break
-                    else:
-                        line_color = (0, 255, 21)
                 
-                cv2.line(im0,(first_third,0),(first_third,h),line_color,3)
-                cv2.line(im0,(second_third,0),(second_third,h),line_color,3)
+                # drawing the limit bar
+                cv2.line(im0,(left_filter,0),(left_filter,h),line_color,3)
+                cv2.line(im0,(right_filter,0),(right_filter,h),line_color,3)
                 
+                #static variable for manouver
+                optimal_path = robot_center
+                output_result = "*5#"
+
+                # starting the obstacle avoidance manouver
                 if hard_object == True:
                     largest_distance = 0
-                    optimal_path = 0
                     for x in range(0, len(object_positions)-1):
                         distance = object_positions[x+1][0] - object_positions[x][0]
                         if distance > largest_distance:
                             largest_distance = distance
                             optimal_path = int(distance / 2 + object_positions[x][0])
                 
-                robot_offset = ((optimal_path - robot_center)/robot_center)*100
+                    robot_offset = ((optimal_path - robot_center)/robot_center)*100
 
-                cv2.line(im0, (round(w/2), round(h/5)*4), (round(w/2),h), (0, 255, 21),3)
-                cv2.line(im0, (round(w/2), round(h/5)*4), (optimal_path,round(h/5)*3), (0, 255, 21),3)
-                cv2.line(im0, (optimal_path, round(h/5)*3), (optimal_path,0), (0, 255, 21),3)
+                    cv2.line(im0, (robot_center, round(h/5)*4), (robot_center,h), (0, 255, 21),3)
+                    cv2.line(im0, (robot_center, round(h/5)*4), (optimal_path,round(h/5)*3), (0, 255, 21),3)
+                    cv2.line(im0, (optimal_path, round(h/5)*3), (optimal_path,0), (0, 255, 21),3)
 
-                ann_input = [robot_offset].extend(sensor_data)
-                scaled_ann_input = scaler.transform(ann_input)
+                    cv2.putText(img=im0, text=f'Offset Robot : {robot_offset}', org=(0, font_spacing), fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=font_scale, color=font_color,thickness=font_thickness)
+                    cv2.putText(img=im0, text=f'Sensor Kiri  : {sensor_data[0]}', org=(0, font_spacing*2), fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=font_scale, color=font_color,thickness=font_thickness)
+                    cv2.putText(img=im0, text=f'Sensor Kanan : {sensor_data[1]}', org=(0, font_spacing*3), fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=font_scale, color=font_color,thickness=font_thickness)
+                    cv2.putText(img=im0, text=f'Sensor Depan : {sensor_data[2]}', org=(0, font_spacing*4), fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=font_scale, color=font_color,thickness=font_thickness)
 
-                output_result = f"*{np.argmax(model.predict(scaled_ann_input))}#"
-                slave_motor.write(bytes(output_result, 'utf-8'))
+                    ann_input = [round(robot_offset)]
+                    ann_input.extend(sensor_data)
+                    scaled_ann_input = scaler.transform([ann_input])
+                    array_result = tf_model.predict(scaled_ann_input)
+                    output_result = f"*{np.argmax(array_result)}#"
+                    cv2.putText(img=im0, text=output_label[np.argmax(array_result)], org=(0, font_spacing*5), fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=font_scale, color=font_color,thickness=font_thickness)
+                
+                if motor_connection == True:
+                    try:
+                        slave_motor.write(bytes(output_result, 'utf-8'))
+                    except:
+                        print("Error sending data to Slave Motor")
+                else:
+                    print("Error sending data to Slave Motor")
 
             # Print time (inference + NMS)
             # print(f'{s}Done. ({t2 - t1:.3f}s)')
@@ -230,10 +266,10 @@ def detect(save_img=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', nargs='+', type=str, default='weights/v5lite-e.pt', help='model.pt path(s)')
-    parser.add_argument('--source', type=str, default='sample', help='source')  # file/folder, 0 for webcam
+    parser.add_argument('--weights', nargs='+', type=str, default='weights/v5lite-g.pt', help='model.pt path(s)')
+    parser.add_argument('--source', type=str, default='0', help='source')  # file/folder, 0 for webcam
     parser.add_argument('--img-size', type=int, default=320, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.45, help='object confidence threshold')
+    parser.add_argument('--conf-thres', type=float, default=0.35, help='object confidence threshold')
     parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
     parser.add_argument('--device', default='', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--view-img', action='store_true', help='display results')
@@ -258,3 +294,4 @@ if __name__ == '__main__':
                 strip_optimizer(opt.weights)
         else:
             detect()
+            
